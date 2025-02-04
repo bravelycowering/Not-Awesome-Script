@@ -3459,6 +3459,19 @@ namespace PluginCCS {
                 run.allowMBrepeat = true;
             }
         }
+        public class AllowMBAsync : ScriptAction {
+            public override string[] documentation { get { return new string[] {
+                "",
+                "    Allows the MB to be re-triggered, even if the script hasn't finished running.",
+            }; } }
+
+            public override string name { get { return "allowmbasync"; } }
+
+            public override void Behavior(ScriptRunner run) {
+                run.p.Extras[run.thisBool] = false;
+                if (run.allowMBrepeat) { run.p.prevMsg = ""; } //Allow repeat if AllowMBRepeat action was called
+            }
+        }
 
         public class Reply : ScriptAction {
             public override string[] documentation { get { return new string[] {
