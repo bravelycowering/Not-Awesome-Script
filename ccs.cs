@@ -4148,7 +4148,7 @@ namespace PluginCCS {
                 "[block] [block coordinates] <message>",
                 "    Used to place message blocks in the map.",
                 "    Just like placeblock, these are permanently placed just like editing the map for real, so caution should be taken when using this Action.",
-                "    If no message is provided, this places a normal block and removes the message at the coordinates specified",
+                "    If no message is provided, this places a normal block and removes the message at the coordinates specified.",
             }; } }
 
             public override string name { get { return "placemessageblock"; } }
