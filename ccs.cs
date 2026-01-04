@@ -660,7 +660,9 @@ namespace PluginCCS {
 
         public const string inputProp = "input";
         static string[] inputPropDesc = new string[] {
-            "[scriptname] &H- which script /input runs (non OS)",
+            "[scriptname]",
+            "which script /input runs (non OS)",
+            "also which script will be ran for #onExit (non OS)",
         };
 
         public const string savePlayerScriptDataProp = "save_player_script_data";
@@ -1591,6 +1593,9 @@ namespace PluginCCS {
                 "        They always start with blank values and other scripts which are running at the same time cannot interfere with them.",
                 "        Local packages also count newthreads as being separate script instances, so they will not carry over when using newthread action.",
                 "        Note that local packages are a unique category when using "+new ScriptActions.ResetData().name+" Action.",
+                "-   using "+NO_RUNARG_UNDERSCORE_CONVERSION,
+                "        Politely informs the script not to convert underscores to spaces when using runArgs within the script.",
+                "        However, the conversion will always still occur to any initial runArgs provided to the script command.",
                 "",
                 "\"include\" statement:",
                 "-   include [scriptname]",
@@ -1612,26 +1617,29 @@ namespace PluginCCS {
 
             const string CEF = "cef";
             const string QUIT_RESETS_RUNARGS = "quit_resets_runargs";
-            public const string LOCAL_PACKAGES_OLD = "local_packages";
-            public const string LOCAL_PACKAGES = "l-packages";
+            public const string LOCAL_PACKAGES_OLD = "l-packages";
+            public const string LOCAL_PACKAGES = "local_packages";
 
             public bool cef;
             public bool quitResetsRunArgs;
             public bool local_packages;
             public bool local_packages_old;
+            public bool convertRunArgUnderscores = true;
 
             public const string ALLOW_INCLUDE = "allow_include";
-            public const string LOCAL_PACKAGES_PREFIX_OLD = "l_";
-            public const string LOCAL_PACKAGES_PREFIX = "l-";
+            public const string LOCAL_PACKAGES_PREFIX_OLD = "l-";
+            public const string LOCAL_PACKAGES_PREFIX = "l_";
 
+            public const string NO_RUNARG_UNDERSCORE_CONVERSION = "no_runarg_underscore_conversion";
             public bool ReadLine(string line) {
                 if (!line.StartsWith(PREFIX)) { return false; }
                 line = line.Substring(PREFIX.Length);
 
                 if (line == CEF) { cef = true; }
-                else if (line == QUIT_RESETS_RUNARGS) { quitResetsRunArgs = true; }
-                else if (line == LOCAL_PACKAGES_OLD) { local_packages_old = true; }
-                else if (line == LOCAL_PACKAGES    ) { local_packages     = true; }
+                else if (line == QUIT_RESETS_RUNARGS)             { quitResetsRunArgs        = true; }
+                else if (line == LOCAL_PACKAGES_OLD)              { local_packages_old       = true; }
+                else if (line == LOCAL_PACKAGES    )              { local_packages           = true; }
+                else if (line == NO_RUNARG_UNDERSCORE_CONVERSION) { convertRunArgUnderscores = false; }
 
                 return true;
             }
@@ -1816,8 +1824,8 @@ namespace PluginCCS {
         bool _cancelled;
         public bool cancelled {
             get {
-                //If running on exit, don't cancel when they've disconnected
-                if (p.Socket.Disconnected && startLabel == LABEL_ON_EXIT) { return false; } 
+                //If running on exit from a staff script, never cancel
+                if (perms.staffPermission && startLabel == LABEL_ON_EXIT) { return false; }
                 
                 //otherwise always cancel if disconnected
                 if (p.Socket.Disconnected) { return true; }
@@ -2029,11 +2037,11 @@ namespace PluginCCS {
         public void ResetRunArgs() {
             runArgs = new string[] { runArgs[0] };
         }
-        public void TryReplaceRunArgs(string[] newRunArgs) {
+        public void TryReplaceRunArgs(string[] newRunArgs, bool convertRunArgUnderscores) {
             if (newRunArgs.Length < 2) { return; }
 
 
-            ReplaceUnderScoreWithSpaceInRunArgs(ref newRunArgs);
+            if (convertRunArgUnderscores) ReplaceUnderScoreWithSpaceInRunArgs(ref newRunArgs);
 
             string originalStartLabel = runArgs[0];
             runArgs = (string[])newRunArgs.Clone();
@@ -2154,10 +2162,12 @@ namespace PluginCCS {
         /// Tries to perform #onExit for the given level, single-threaded
         /// </summary>
         public static void PerformOnExit(Player p, Level level) {
-            string filePath = Script.FullPath(level.name);
-            if (!File.Exists(filePath)) { return; }
-
-            PerformScript(p, level, level.name, LABEL_ON_EXIT, RunnerPerms.Staff, false, CommandData());
+            string scriptName = level.GetExtraPropString(Core.inputProp, level.name);
+            string filePath = Script.FullPath(scriptName);
+            if (!File.Exists(filePath)) {
+                return;
+            }
+            PerformScript(p, level, scriptName, LABEL_ON_EXIT, RunnerPerms.Staff, false, CommandData());
             //Single-threaded because we need this to finish before the script variables get reset when player spawning is called
         }
         /// <summary>
@@ -2352,6 +2362,9 @@ namespace PluginCCS {
 
             if (equality == "=") {
                 doAction = packageLiteral.CaselessEq(comparedToLiteral);
+                goto end;
+            } else if (equality == "has") {
+                doAction = packageLiteral.CaselessContains(comparedToLiteral);
                 goto end;
             } else {
                 Error(
@@ -2856,7 +2869,7 @@ namespace PluginCCS {
 
                 Player[] players = PlayerInfo.Online.Items;
                 foreach (Player pl in players) {
-                    if (!Chat.FilterLevel(pl, run.p.level)) continue;
+                    if (!Chat.FilterLevel(pl, run.startingLevel)) continue;
                     if (Chat.Ignoring(pl, run.p)) continue;
 
                     if (type == CpeMessageType.Normal) { pl.Message(run.cmdArgs); }
@@ -2910,7 +2923,7 @@ namespace PluginCCS {
 
             public override void Behavior(ScriptRunner run) {
                 string[] newRunArgs = run.args.Split(ScriptRunner.pipeChar);
-                run.TryReplaceRunArgs(newRunArgs);
+                run.TryReplaceRunArgs(newRunArgs, run.curLine.uses.convertRunArgUnderscores);
 
                 if (!run.script.GetLabel(newRunArgs[0], out run.actionIndex)) {
                     run.Error("Unknown label \"" + newRunArgs[0] + "\".");
@@ -2975,7 +2988,7 @@ namespace PluginCCS {
                 } else {
                     //they specified new runArgs
                     newThreadRunArgs[0] = run.runArgs[0]; //preserve starting label from original script instance
-                    //Don't do this anymore, allow spaces in runargs
+                    //Don't do this anymore, allow underscores in runargs
                     //ScriptRunner.ReplaceUnderScoreWithSpaceInRunArgs(ref newThreadRunArgs);
                 }
 
@@ -5021,6 +5034,12 @@ namespace PluginCCS {
                 "-       if myGemCount|<|bowGemPrice msg Sorry, you don't have enough gems to afford this bow.",
                 "-       if myGemCount|>=|2 msg Prospector: Well I'll be; you did manage to find more than one...!",
                 "",
+                "if [package]|has|[package to test for] [Action]",
+                "   The [Action] will only be performed if [package] contains the value of [package to test for].",
+                "   For example:",
+                "       set myDialogue You: Wow I didn't notice you there",
+                "       if myDialgue|has|\"wow\" msg Ninja: I did not mean to startle you.",
+                "",
                 "if item [ITEM_NAME] [Action]",
                 "    The [Action] will only be performed if the player has the given item.",
                 "",
@@ -5130,6 +5149,10 @@ namespace PluginCCS {
                 "        This can have the value of Left, Right, or Middle",
                 "    click.coords",
                 "        This is the block coordinates the player clicked. Any out-of-map coordinate means no block was targeted.",
+                "    click.coordsX",
+                "    click.coordsY",
+                "    click.coordsZ",
+                "        click.coords accessible via a given axis",
                 "    click.yaw",
                 "    click.pitch",
                 "        The yaw and pitch of the player when they clicked. This is more precise than typical PlayerYaw and PlayerPitch",
@@ -5289,6 +5312,9 @@ namespace PluginCCS {
             if (field == "button") { return button.ToString(); }
             //if (field == "action") { return action.ToString(); } //Useless as action is always same
             if (field == "coords") { return x + " " + y + " " + z; }
+            if (field == "coordsx") { return x.ToString(); }
+            if (field == "coordsy") { return y.ToString(); }
+            if (field == "coordsz") { return z.ToString(); }
             if (field == "yaw") { return PackedToDeg(yaw).ToString(); }
             if (field == "pitch") { return PackedToDeg(pitch).ToString(); }
             if (field == "face") { return face.ToString(); }
