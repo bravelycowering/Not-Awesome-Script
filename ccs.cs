@@ -3998,10 +3998,9 @@ namespace PluginCCS {
                     return;
                 }
                 string packageName = bits[0];
-                string[] stringCoords = new string[] { bits[1], bits[2], bits[3] };
 
                 Vec3S32 coords = new Vec3S32();
-                if (!CommandParser.GetCoords(run.p, stringCoords, 0, ref coords)) { run.ErrorAbove(); }
+                if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); }
                 run.SetString(packageName, ClientBlockID(run.p.level.GetBlock((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z)).ToString());
             }
             public static BlockID ClientBlockID(BlockID serverBlockID) {
@@ -4021,17 +4020,15 @@ namespace PluginCCS {
             public override void Behavior(ScriptRunner run) {
                 string[] bits = run.args.SplitSpaces(4);
                 if (bits.Length < 4) {
-                    run.Error("You need to specify a package and x y z coordinates of the block to retrieve the ID of.");
+                    run.Error("You need to specify a package and x y z coordinates of the block to retrieve the message of.");
                     return;
                 }
                 string packageName = bits[0];
-                string[] stringCoords = new string[] { bits[1], bits[2], bits[3] };
 
                 Vec3S32 coords = new Vec3S32();
-                if (!CommandParser.GetCoords(run.p, stringCoords, 0, ref coords)) { run.ErrorAbove(); }
+                if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); }
                 string message = MessageBlock.Get(run.startingLevel.name, (ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z);
-                if (message == null)
-                    message = "";
+                if (message == null) { message = ""; }
                 run.SetString(packageName, message);
             }
         }
@@ -4124,146 +4121,162 @@ namespace PluginCCS {
 
             public override string name { get { return "placeblock"; } }
 
-            public override void Behavior(ScriptRunner run) {
-                string[] bits = run.args.SplitSpaces();
-                Vec3S32 coords = new Vec3S32();
-                if (bits.Length < 4) { run.Error("Not enough arguments for placeblock"); return; }
-                if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); return; }
-
-                BlockID block = 0;
-                if (!CommandParser.GetBlock(run.p, bits[0], out block)) { return; }
-
-
+            static protected bool CanPlace(ScriptRunner run, BlockID block, Vec3S32 coords) {
                 if (!MCGalaxy.Group.GuestRank.CanPlace[block]) {
                     string blockName = Block.GetName(run.p, block);
                     run.Error("Rank {0} &Sis not allowed to use block \"{1}\". Therefore, script cannot place it.",
                         MCGalaxy.Group.GuestRank.ColoredName, blockName);
-                    return;
+                    return false;
                 }
                 BlockID deleted = run.startingLevel.GetBlock((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z);
                 if (!MCGalaxy.Group.GuestRank.CanDelete[deleted]) {
                     string blockName = Block.GetName(run.p, deleted);
                     run.Error("Rank {0} &Sis not allowed to delete block \"{1}\". Therefore, script cannot replace it.",
                         MCGalaxy.Group.GuestRank.ColoredName, blockName);
-                    return;
+                    return false;
                 }
-
+                return true;
+            }
+            static protected void Place(ScriptRunner run, BlockID block, ref Vec3S32 coords) {
                 coords = run.startingLevel.ClampPos(coords);
-
                 run.startingLevel.SetBlock((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z, block);
                 run.startingLevel.BroadcastChange((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z, block);
             }
-        }
-
-        public class PlaceMessageBlock : ScriptAction {
-            public override Cat cat { get { return Cat.World; } }
-            public override string[] documentation { get { return new string[] {
-                "[block] [block coordinates] <message>",
-                "    Used to place message blocks in the map.",
-                "    Just like placeblock, these are permanently placed just like editing the map for real, so caution should be taken when using this Action.",
-                "    If no message is provided, this places a normal block and removes the message at the coordinates specified.",
-            }; } }
-
-            public override string name { get { return "placemessageblock"; } }
-
-            // copied basically 1:1 from MCGalaxy/Blocks/Extended/MessageBlock.cs
-            // because MCGalaxy doesnt expose MessageBlock.GetParts as public
-            static string[] sep = new string[] { " |/" };
-            static List<string> empty = new List<string>();
-            static List<string> GetMessageBlockParts(string message, out string text) {
-                if (message.IndexOf('|') == -1) return ParseSingle(message, out text);
-                
-                string[] parts = message.Split(sep, StringSplitOptions.RemoveEmptyEntries);
-                List<string> cmds = ParseSingle(parts[0], out text);
-                if (parts.Length == 1) return cmds;
-                
-                if (text != null) cmds = new List<string>();
-                for (int i = 1; i < parts.Length; i++)
-                    cmds.Add(parts[i]);
-                return cmds;
-            }
-        
-            static List<string> ParseSingle(string message, out string text) {
-                bool isCommand = false;
-                if (message[0] == '/') {
-                    if (!message.StartsWith("//")) {
-                        isCommand = true;
-                    }
-                    message = message.Substring(1);
-                }
-                
-                if (isCommand) {
-                    text = null; return new List<string>(){ message };
-                } else {
-                    text = message; return empty;
-                }
-            }
-
             public override void Behavior(ScriptRunner run) {
-                string[] bits = run.args.SplitSpaces(5);
+                string[] bits = run.args.SplitSpaces();
                 Vec3S32 coords = new Vec3S32();
-                if (bits.Length < 4) { run.Error("Not enough arguments for placemessageblock"); return; }
+                if (bits.Length < 4) { run.Error("Not enough arguments for {0}", name); return; }
                 if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); return; }
 
-                BlockID block = 0;
-                switch (bits[0]) {
-                    case "white":
-                        block = Block.MB_White;
-                        break;
-                    case "black":
-                        block = Block.MB_Black;
-                        break;
-                    case "air":
-                        block = Block.MB_Air;
-                        break;
-                    case "water":
-                        block = Block.MB_Water;
-                        break;
-                    case "lava":
-                        block = Block.MB_Lava;
-                        break;
-                    default:
-                        if (!CommandParser.GetBlock(run.p, bits[0], out block)) { return; }
-                        break;
+                BlockID block;
+                if (!CommandParser.GetBlock(run.p, bits[0], out block)) { return; }
+
+                if (!CanPlace(run, block, coords)) { return; }
+                Place(run, block, ref coords);
+            }
+        }
+
+        public class PlaceMessageBlock : PlaceBlock {
+            /// <summary>
+            /// For methods copy pasted from MCGalaxy's MessageBlock that are not currently public
+            /// </summary>
+            private static class MB {
+                // copied basically 1:1 from MCGalaxy/Blocks/Extended/MessageBlock.cs
+                // because MCGalaxy doesnt expose MessageBlock.GetParts as public
+                static readonly string[] sep = new string[] { " |/" };
+                static readonly List<string> empty = new List<string>();
+                static List<string> GetMessageBlockParts(string message, out string text) {
+                    if (message.IndexOf('|') == -1) return ParseSingle(message, out text);
+
+                    string[] parts = message.Split(sep, StringSplitOptions.RemoveEmptyEntries);
+                    List<string> cmds = ParseSingle(parts[0], out text);
+                    if (parts.Length == 1) return cmds;
+
+                    if (text != null) cmds = new List<string>();
+                    for (int i = 1; i < parts.Length; i++)
+                        cmds.Add(parts[i]);
+                    return cmds;
                 }
+                // also copied 
+                static List<string> ParseSingle(string message, out string text) {
+                    bool isCommand = false;
+                    if (message[0] == '/') {
+                        if (!message.StartsWith("//")) {
+                            isCommand = true;
+                        }
+                        message = message.Substring(1);
+                    }
 
-                if (!MCGalaxy.Group.GuestRank.CanPlace[block]) {
-                    string blockName = Block.GetName(run.p, block);
-                    run.Error("Rank {0} &Sis not allowed to use block \"{1}\". Therefore, script cannot place it.",
-                        MCGalaxy.Group.GuestRank.ColoredName, blockName);
-                    return;
+                    if (isCommand) {
+                        text = null; return new List<string>() { message };
+                    } else {
+                        text = message; return empty;
+                    }
                 }
-                BlockID deleted = run.startingLevel.GetBlock((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z);
-                if (!MCGalaxy.Group.GuestRank.CanDelete[deleted]) {
-                    string blockName = Block.GetName(run.p, deleted);
-                    run.Error("Rank {0} &Sis not allowed to delete block \"{1}\". Therefore, script cannot replace it.",
-                        MCGalaxy.Group.GuestRank.ColoredName, blockName);
-                    return;
+                /// <summary>
+                /// From CmdMessageBlock
+                /// </summary>
+                public static bool IsMBBlock(Level lvl, BlockID block) {
+                    return lvl.Props[block].IsMessageBlock;
                 }
-
-                coords = run.startingLevel.ClampPos(coords);
-
-                if (bits.Length == 5) {
-                    // verify message block contents
-                    string message = bits[4];
-                    string text;
-                    List<string> cmdstrs = GetMessageBlockParts(message, out text);
-
+                public static bool AllowedInMB(ScriptRunner run, string MBcontents) {
+                    string _;
+                    List<string> cmdstrs = GetMessageBlockParts(MBcontents, out _);
                     foreach (string cmdstr in cmdstrs) {
                         string[] parts = cmdstr.SplitSpaces(2);
                         string cmdName = parts[0], cmdArgs = "";
                         Command.Search(ref cmdName, ref cmdArgs);
 
                         Command cmd = Command.Find(cmdName);
-                        if (!run.CheckCommandPerms(cmd)) { return; }
+                        if (!run.CheckCommandPerms(cmd)) { return false; }
                     }
-                    MessageBlock.Set(run.startingLevel.name, (ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z, message);
+                    return true;
+                }
+            }
+
+            public override Cat cat { get { return Cat.World; } }
+            public override string[] documentation { get { return new string[] {
+                "[block] [block coordinates] <message>",
+                "    Used to place message blocks in the map.",
+                "    Like placeblock, these are permanently placed just like editing the map for real, so caution should be taken when using this Action.",
+                "    If no message is provided, this places a normal block and removes the message at the coordinates specified.",
+            }; } }
+
+            public override string name { get { return "placemessageblock"; } }
+
+            public override void Behavior(ScriptRunner run) {
+                string[] bits = run.args.SplitSpaces(5);
+                Vec3S32 coords = new Vec3S32();
+                if (bits.Length < 4) { run.Error("Not enough arguments for {0}", name); return; }
+                if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); return; }
+
+                string MBcontents = null;
+
+                if (bits.Length == 5) {
+                    MBcontents = bits[4];
+                    if (!MB.AllowedInMB(run, MBcontents)) { return; }
+                }
+
+                BlockID block;
+                if (!CommandParser.GetBlock(run.p, bits[0], out block)) { return; }
+
+                //Only filter to builtin MBs if a message block is being placed
+                if (MBcontents != null) {
+                    bits[0] = bits[0].ToLower();
+                    switch (bits[0]) {
+                        case "white":
+                            block = Block.MB_White;
+                            break;
+                        case "black":
+                            block = Block.MB_Black;
+                            break;
+                        case "air":
+                            block = Block.MB_Air;
+                            break;
+                        case "water":
+                            block = Block.MB_Water;
+                            break;
+                        case "lava":
+                            block = Block.MB_Lava;
+                            break;
+                    }
+                }
+
+                //User is about to commit an error that's hard to diagnose, nip it in the bud
+                if (MBcontents != null && !MB.IsMBBlock(run.startingLevel, block)) {
+                    string blockName = Block.GetName(run.p, block);
+                    run.Error("\"{0}\" cannot be used as a message block. Therefore, a message cannot be placed in it.", blockName);
+                    return;
+                }
+
+                if (!CanPlace(run, block, coords)) { return; }
+                Place(run, block, ref coords);
+
+                if (MBcontents != null) {
+                    MessageBlock.Set(run.startingLevel.name, (ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z, MBcontents);
                 } else {
                     MessageBlock.Delete(run.startingLevel.name, (ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z);
                 }
-
-                run.startingLevel.SetBlock((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z, block);
-                run.startingLevel.BroadcastChange((ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z, block);
             }
         }
 
