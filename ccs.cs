@@ -4208,6 +4208,10 @@ namespace PluginCCS {
                         Command.Search(ref cmdName, ref cmdArgs);
 
                         Command cmd = Command.Find(cmdName);
+                        if (cmd == null) {
+                            run.Error("Unknown command \"{0}\" cannot be used in a messageblock.", cmdName);
+                            return false;
+                        }
                         if (!run.CheckCommandPerms(cmd)) { return false; }
                     }
                     return true;
