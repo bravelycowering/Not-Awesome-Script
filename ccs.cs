@@ -1926,7 +1926,10 @@ namespace PluginCCS {
         public bool ValidateCommand(out Command cmd) {
             cmd = null;
             Command.Search(ref cmdName, ref cmdArgs);
-            if (!perms.staffPermission && (cmdName.CaselessEq("runscript") || cmdName.CaselessEq(Core.runscriptCmd.name))) {
+            if (!perms.staffPermission &&
+                (cmdName.CaselessEq("runscript") ||
+                cmdName.CaselessEq(Core.runscriptCmd.name) ||
+                cmdName.CaselessEq(Core.osRunscriptCmd.name))) {
                 Error("Command \"{0}\" is blacklisted from being used in scripts.", cmdName);
                 return false;
             }
