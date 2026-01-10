@@ -1351,8 +1351,15 @@ namespace PluginCCS {
                 if (uses.ReadLine(line)) { continue; }
 
                 if (line.StartsWith("include")) {
+                    if (includedPaths == null) {
+                        CompileError(p, scriptName, lineNumber, "This script does not support include");
+                        return false;
+                    }
                     string[] bits = line.SplitSpaces();
-                    if (bits.Length != 2) { CompileError(p, scriptName, lineNumber, "Include statement only accepts one argument which is the script to be included."); return false; }
+                    if (bits.Length != 2) {
+                        CompileError(p, scriptName, lineNumber, "Include statement only accepts one argument which is the script to be included.");
+                        return false;
+                    }
 
                     string includeScriptName = bits[1];
                     string includePath = FullPath(includeScriptName);
