@@ -4239,7 +4239,7 @@ namespace PluginCCS {
             public override string name { get { return "placemessageblock"; } }
 
             public override void Behavior(ScriptRunner run) {
-                string[] bits = run.args.SplitSpaces(5);
+                string[] bits = run.args.Trim().SplitSpaces(5);
                 Vec3S32 coords = new Vec3S32();
                 if (bits.Length < 4) { run.Error("Not enough arguments for {0}", name); return; }
                 if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); return; }
