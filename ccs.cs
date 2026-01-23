@@ -1797,7 +1797,6 @@ namespace PluginCCS {
         public Player p;
         public ScriptData scriptData;
         public Level startingLevel;
-        public string startingLevelName { get { return startingLevel.name; } }
         public string scriptName;
         public string startLabel;
         public RunnerPerms perms = null;
@@ -1838,7 +1837,7 @@ namespace PluginCCS {
                 //otherwise always cancel if disconnected
                 if (p.Socket.Disconnected) { return true; }
                 
-                return _cancelled || startingLevelName != p.level.name.ToLower(); 
+                return _cancelled || startingLevel.name != p.level.name.ToLower(); 
             }
             set {
                 if (value != true) { throw new System.ArgumentException("cancelled can only be set to true"); }
@@ -4037,7 +4036,10 @@ namespace PluginCCS {
 
                 Vec3S32 coords = new Vec3S32();
                 if (!CommandParser.GetCoords(run.p, bits, 1, ref coords)) { run.ErrorAbove(); }
-                string message = MessageBlock.Get(run.startingLevel.name, (ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z);
+                string message = null;
+                if (MessageBlock.ExistsInDB(run.startingLevel.MapName)) {
+                    message = MessageBlock.Get(run.startingLevel.name, (ushort)coords.X, (ushort)coords.Y, (ushort)coords.Z);
+                }
                 if (message == null) { message = ""; }
                 run.SetString(packageName, message);
             }
