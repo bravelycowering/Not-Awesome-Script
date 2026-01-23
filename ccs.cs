@@ -1003,6 +1003,61 @@ namespace PluginCCS {
 
             return distance[sourceWordCount, targetWordCount];
         }
+
+        /// <summary>
+        /// TODO better name idk I'm self taught
+        /// </summary>
+        public class Token {
+            public readonly string value;
+            public readonly bool literal;
+            public Token(string value, bool literal) {
+                this.value = value;
+                this.literal = literal;
+            }
+        }
+        /// <summary>
+        /// Get a list of tokens split by a deliminator of either spaces or enclosing quotes.
+        /// If a token was inside of quotes, it will be marked as literal
+        /// </summary>
+        public static List<Token> SplitQuotes(string merged) {
+            // "Hello",    did you "do it" , yet?
+            // ->
+            // [Hello]
+            // ,
+            // did
+            // you
+            // [do it]
+            // ,
+            // yet?
+
+            List<Token> phrases = new List<Token>();
+
+            StringBuilder sb = new StringBuilder(8);
+            bool inQuote = false;
+            foreach (char c in merged) {
+                if (c == '\"') {
+                    if (inQuote) {
+                        phrases.Add(new Token(sb.ToString(), true));
+                        sb.Clear();
+                    }
+                    inQuote = !inQuote;
+                    continue;
+                }
+
+                if (!inQuote && c == ' ') {
+                    if (sb.Length > 0) {
+                        phrases.Add(new Token(sb.ToString(), false));
+                        sb.Clear();
+                    }
+                    continue;
+                }
+                sb.Append(c);
+            }
+            //Last non quoted word
+            if (sb.Length > 0) { phrases.Add(new Token(sb.ToString(), false)); }
+
+            return phrases;
+        }
     }
 
     public class CmdScript : Command2 {
@@ -2390,8 +2445,17 @@ namespace PluginCCS {
             return doAction;
         }
 
+        /// <summary>
+        /// The entire string provided to the action
+        /// </summary>
         public string args;
+        /// <summary>
+        /// The first word provided to the action
+        /// </summary>
         public string cmdName;
+        /// <summary>
+        /// The remaining words after the first word provided to the action
+        /// </summary>
         public string cmdArgs;
         public ScriptLine curLine;
         void RunScriptLine(ScriptLine line) {
@@ -4462,6 +4526,44 @@ namespace PluginCCS {
 
             public override void Behavior(ScriptRunner run) {
                 _Behavior(run, false);
+            }
+        }
+
+        public class SetSimilarity : ScriptAction {
+            public override Cat cat { get { return Cat.Messages | Cat.Packages; } }
+            public override string[] documentation { get { return new string[] {
+                "[package] [phrase A] [phrase B]",
+                "    Calculates the similarity of [phrase A] and [phrase B] and inserts the result into [package]",
+                "    The similarity ranges from 0 to 1 where 0 means no similarity and 1 means identical.",
+                "    The comparison is case-insensitive. For example, AAA and aaa will have a similarity of 1.",
+                "    Non alphanumeric characters will be ignored when calculating similarity.",
+                "    Each phrase may be:",
+                "    - a package name. The value of that package is compared.",
+                "    - a quote-enclosed literal phrase or word in which spaces are allowed. The characters inside the quotes are compared.",
+                "    For example",
+                "-       setsimilarity sim runArg1 curPassword",
+                "-       setsimilarity sim runArg1 \"Thanks spiders\"",
+                "-       setsimilarity sim \"test 1\" \"test 2\"",
+            }; } }
+
+            public override string name { get { return "setsimilarity"; } }
+
+            public override void Behavior(ScriptRunner run) {
+                string setee = run.cmdName;
+                if (run.cmdArgs == "") {
+                    run.Error("Not enough arguments provided for {0}", name); return;
+                }
+                List<StringUtils.Token> tokens = StringUtils.SplitQuotes(run.cmdArgs);
+                if (tokens.Count < 2) {
+                    run.Error("Not enough arguments provided for {0}", name); return;
+                }
+                if (tokens.Count > 2) {
+                    run.Error("Too many arguments provided for {0}. Double check your usage of quotes to ensure valid pairs.", name); return;
+                }
+                string phraseA = tokens[0].literal ? tokens[0].value : run.GetString(tokens[0].value);
+                string phraseB = tokens[1].literal ? tokens[1].value : run.GetString(tokens[1].value);
+                run.p.Message("phraseA is {0} phraseB is {1}", phraseA, phraseB);
+                run.SetString(setee, StringUtils.CalculateSimilarity(phraseA.StripPunctuation(), phraseB.StripPunctuation()).ToString());
             }
         }
 
